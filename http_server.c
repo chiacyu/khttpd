@@ -202,7 +202,8 @@ static struct work_struct *create_work(struct socket *sk)
 
     INIT_WORK(&work->khttp_work, http_server_worker);
 
-    list_add(&work->list, &daemon.worker);
+    // list_add(&work->list, &daemon.worker);
+    list_add_rcu(&work->list, &daemon.worker);
 
     return &work->khttp_work;
 }
@@ -212,12 +213,16 @@ static void free_work(void)
     struct khttp *l, *tar;
     /* cppcheck-suppress uninitvar */
 
-    list_for_each_entry_safe (tar, l, &daemon.worker, list) {
+    rcu_read_lock();
+    list_for_each_entry_rcu(tar, &daemon.worker, list)
+    {
+        // list_for_each_entry_safe (tar, l, &daemon.worker, list) {
         kernel_sock_shutdown(tar->sock, SHUT_RDWR);
         flush_work(&tar->khttp_work);
         sock_release(tar->sock);
         kfree(tar);
     }
+    rcu_read_unlock();
 }
 
 int http_server_daemon(void *arg)
