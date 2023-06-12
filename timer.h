@@ -6,7 +6,8 @@
 
 #define TIMEOUT_DEFAULT 500 /* ms */
 
-typedef int (*timer_callback)(struct khttp *req);
+// typedef int (*timer_callback)(struct khttp *req);
+typedef int (*timer_callback)(struct socket *sock, enum sock_shutdown_cmd how);
 
 typedef struct {
     size_t key;

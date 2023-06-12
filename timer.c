@@ -158,6 +158,7 @@ int timer_init()
     // BUG_ON(ret && "prio_queue_init error");
 
     time_update();
+    pr_info("timer initialized successfully\n");
     return 0;
 }
 
@@ -208,7 +209,7 @@ void handle_expired_timers()
         if (node->key > current_msec)
             return;
         if (node->callback)
-            node->callback(node->request);
+            node->callback(node->request->sock, SHUT_RDWR);
 
         ret = prio_queue_delmin(&timer);
         if (!ret) {
@@ -236,6 +237,7 @@ void add_timer_t(struct khttp *req, size_t timeout, timer_callback cb)
         pr_err("add_timer: prio_queue_insert error");
     }
     // BUG_ON(ret && "add_timer: prio_queue_insert error");
+    pr_info("add_timer: prio_queue_insert successfully\n");
 }
 
 void del_timer_t(struct khttp *req)

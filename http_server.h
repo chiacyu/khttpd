@@ -17,6 +17,7 @@ struct khttp {
     struct socket *sock;
     struct list_head list;
     struct work_struct khttp_work;
+    void *timer;
 };
 
 

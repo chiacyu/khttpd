@@ -7,6 +7,8 @@
 #include "http_parser.h"
 #include "http_server.h"
 
+#include "timer.c"
+
 #define CRLF "\r\n"
 
 #define HTTP_RESPONSE_200_DUMMY                               \
@@ -187,6 +189,7 @@ static void http_server_worker(struct work_struct *work)
         memset(buf, 0, RECV_BUFFER_SIZE);
     }
     kernel_sock_shutdown(socket, SHUT_RDWR);
+    del_timer_t(worker);
     sock_release(socket);
     kfree(buf);
 }
@@ -204,6 +207,8 @@ static struct work_struct *create_work(struct socket *sk)
 
     // list_add(&work->list, &daemon.worker);
     list_add_rcu(&work->list, &daemon.worker);
+
+    add_timer_t(work, TIMEOUT_DEFAULT, kernel_sock_shutdown);
 
     return &work->khttp_work;
 }
@@ -234,9 +239,14 @@ int http_server_daemon(void *arg)
     allow_signal(SIGKILL);
     allow_signal(SIGTERM);
 
+    timer_init();
     INIT_LIST_HEAD(&daemon.worker);
 
     while (!kthread_should_stop()) {
+        int time = find_timer();
+        pr_info("wait time = %d\n", time);
+        handle_expired_timers();
+
         int err = kernel_accept(param->listen_socket, &socket, 0);
         if (err < 0) {
             if (signal_pending(current))
