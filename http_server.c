@@ -173,6 +173,7 @@ static void http_server_worker(struct work_struct *work)
     request.socket = socket;
     http_parser_init(&parser, HTTP_REQUEST);
     parser.data = &request;
+    add_timer_t(work, TIMEOUT_DEFAULT, kernel_sock_shutdown);
 
     while (!daemon.is_stopped) {
         int ret;
@@ -208,7 +209,7 @@ static struct work_struct *create_work(struct socket *sk)
     // list_add(&work->list, &daemon.worker);
     list_add_rcu(&work->list, &daemon.worker);
 
-    add_timer_t(work, TIMEOUT_DEFAULT, kernel_sock_shutdown);
+    // add_timer_t(work, TIMEOUT_DEFAULT, kernel_sock_shutdown);
 
     return &work->khttp_work;
 }
@@ -247,7 +248,8 @@ int http_server_daemon(void *arg)
         pr_info("wait time = %d\n", time);
         handle_expired_timers();
 
-        int err = kernel_accept(param->listen_socket, &socket, 0);
+        // int err = kernel_accept(param->listen_socket, &socket, 0);
+        int err = kernel_accept(param->listen_socket, &socket, SOCK_NONBLOCK);
         if (err < 0) {
             if (signal_pending(current))
                 break;
