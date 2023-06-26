@@ -6,7 +6,7 @@
 #include "timer.h"
 
 #define TIMER_INFINITE (-1)
-#define PQ_DEFAULT_SIZE 10
+#define PQ_DEFAULT_SIZE 200000
 
 typedef int (*prio_queue_comparator)(void *pi, void *pj);
 
@@ -39,10 +39,10 @@ static inline bool prio_queue_is_empty(prio_queue_t *ptr)
     return ptr->nalloc == 0;
 }
 
-static inline size_t prio_queue_size(prio_queue_t *ptr)
-{
-    return ptr->nalloc;
-}
+// static inline size_t prio_queue_size(prio_queue_t *ptr)
+// {
+//     return ptr->nalloc;
+// }
 
 static inline void *prio_queue_min(prio_queue_t *ptr)
 {
@@ -191,7 +191,8 @@ void handle_expired_timers()
     bool ret;
 
     while (!prio_queue_is_empty(&timer)) {
-        pr_info("handle_expired_timers, size = %zu", prio_queue_size(&timer));
+        // pr_info("handle_expired_timers, size = %zu",
+        // prio_queue_size(&timer));
         time_update();
         timer_node *node = prio_queue_min(&timer);
         // BUG_ON(node && "prio_queue_min error");
@@ -202,6 +203,10 @@ void handle_expired_timers()
                 pr_err("handle_expired_timers: prio_queue_delmin error\n");
             }
             // BUG_ON(ret && "handle_expired_timers: prio_queue_delmin error");
+            pr_info(
+                "handle_expired_timers() node->deleted: free node of socket "
+                "%d\n",
+                node->request->sock);
             kfree(node);
             continue;
         }
@@ -216,6 +221,10 @@ void handle_expired_timers()
             pr_err("handle_expired_timers: prio_queue_delmin error\n");
         }
         // BUG_ON(ret && "handle_expired_timers: prio_queue_delmin error");
+        pr_info(
+            "handle_expired_timers() prio_queue_delmin(): free node of socket "
+            "%d\n",
+            node->request->sock);
         kfree(node);
     }
 }
