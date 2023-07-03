@@ -173,7 +173,7 @@ static void http_server_worker(struct work_struct *work)
     request.socket = socket;
     http_parser_init(&parser, HTTP_REQUEST);
     parser.data = &request;
-    add_timer_t(work, TIMEOUT_DEFAULT, kernel_sock_shutdown);
+    add_timer_t(worker, TIMEOUT_DEFAULT, kernel_sock_shutdown);
 
     while (!daemon.is_stopped) {
         int ret;
@@ -231,6 +231,35 @@ static void free_work(void)
     rcu_read_unlock();
 }
 
+static int printdir(struct dir_context *ctx,
+                    const char *name,
+                    int namlen,
+                    loff_t offset,
+                    u64 ino,
+                    unsigned int d_type)
+{
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+        return 0;
+    }
+    pr_info("Filename : %s\n", name);
+    return 0;
+}
+
+static void list_directory_info(void)
+{
+    pr_info("Into : list_directory_info()\n");
+    char *path = "/";
+    struct dir_context ctx = {.actor = &printdir};
+    struct file *fp = filp_open(path, O_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
+
+    if (IS_ERR(fp)) {
+        printk("Open file error\n");
+    }
+    iterate_dir(fp, &ctx);
+
+    return;
+}
+
 int http_server_daemon(void *arg)
 {
     struct socket *socket;
@@ -243,9 +272,11 @@ int http_server_daemon(void *arg)
     timer_init();
     INIT_LIST_HEAD(&daemon.worker);
 
+    list_directory_info();
+
     while (!kthread_should_stop()) {
         int time = find_timer();
-        pr_info("wait time = %d\n", time);
+        // pr_info("wait time = %d\n", time);
         handle_expired_timers();
 
         // int err = kernel_accept(param->listen_socket, &socket, 0);
@@ -253,7 +284,7 @@ int http_server_daemon(void *arg)
         if (err < 0) {
             if (signal_pending(current))
                 break;
-            pr_err("kernel_accept() error: %d\n", err);
+            // pr_err("kernel_accept() error: %d\n", err);
             continue;
         }
 
