@@ -185,7 +185,7 @@ static void list_directory_info(struct http_request *request)
     http_server_send(request->socket, response, BUFFER_SIZE);
     memset(response, '\0', BUFFER_SIZE);
 
-    spnrintf(response, BUFFER_SIZE,
+    snprintf(response, BUFFER_SIZE,
              "<!DOCTYPE html><html><head><title>Page "
              "Title</title></head><body><ul>");
     http_server_send(request->socket, response, BUFFER_SIZE);
