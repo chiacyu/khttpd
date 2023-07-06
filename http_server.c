@@ -10,6 +10,7 @@
 #include "timer.c"
 
 #define CRLF "\r\n"
+#define BUFFER_SIZE 4096
 
 #define HTTP_RESPONSE_200_DUMMY                               \
     ""                                                        \
@@ -39,6 +40,7 @@ struct http_request {
     enum http_method method;
     char request_url[128];
     int complete;
+    struct dir_context ctx;
 };
 
 struct khttp_server_service daemon = {.is_stopped = false};
@@ -78,19 +80,20 @@ static int http_server_send(struct socket *sock, const char *buf, size_t size)
     return done;
 }
 
-static int http_server_response(struct http_request *request, int keep_alive)
-{
-    char *response;
+// static int http_server_response(struct http_request *request, int keep_alive)
+// {
+//     char *response;
 
-    pr_info("requested_url = %s\n", request->request_url);
-    if (request->method != HTTP_GET)
-        response = keep_alive ? HTTP_RESPONSE_501_KEEPALIVE : HTTP_RESPONSE_501;
-    else
-        response = keep_alive ? HTTP_RESPONSE_200_KEEPALIVE_DUMMY
-                              : HTTP_RESPONSE_200_DUMMY;
-    http_server_send(request->socket, response, strlen(response));
-    return 0;
-}
+//     pr_info("requested_url = %s\n", request->request_url);
+//     if (request->method != HTTP_GET)
+//         response = keep_alive ? HTTP_RESPONSE_501_KEEPALIVE :
+//         HTTP_RESPONSE_501;
+//     else
+//         response = keep_alive ? HTTP_RESPONSE_200_KEEPALIVE_DUMMY
+//                               : HTTP_RESPONSE_200_DUMMY;
+//     http_server_send(request->socket, response, strlen(response));
+//     return 0;
+// }
 
 static int http_parser_callback_message_begin(http_parser *parser)
 {
@@ -138,10 +141,68 @@ static int http_parser_callback_body(http_parser *parser,
     return 0;
 }
 
+static int printdir(struct dir_context *ctx,
+                    const char *name,
+                    int namlen,
+                    loff_t offset,
+                    u64 ino,
+                    unsigned int d_type)
+{
+    char *buf = kmalloc(BUFFER_SIZE, GFP_KERNEL);
+    struct http_request *request = container_of(ctx, struct http_request, ctx);
+
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+        return 0;
+    }
+
+    snprintf(buf, BUFFER_SIZE, "<li><a href=./%s/>%s</a></li>", name, name);
+    http_server_send(request->socket, buf, BUFFER_SIZE);
+    return 0;
+}
+
+static void list_directory_info(struct http_request *request)
+{
+    pr_info("Into : list_directory_info()\n");
+
+    char *response = kmalloc(BUFFER_SIZE, GFP_KERNEL);
+
+    if (request->method != HTTP_GET) {
+        response = HTTP_RESPONSE_501;
+        http_server_send(request->socket, response, strlen(response));
+    }
+
+    char *path = "/";
+    // struct dir_context ctx = {.actor = &printdir};
+    request->ctx.actor = &printdir;
+    struct file *fp = filp_open(path, O_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
+    if (IS_ERR(fp)) {
+        pr_err("Open file error\n");
+    }
+
+    snprintf(response, BUFFER_SIZE, "HTTP/1.1 200 OK \r\n%s%s%s",
+             "Server: localhost\r\n", "Content-Type: text/html\r\n",
+             "Keep-Alive: timeout=5, max=999\r\n\r\n");
+    http_server_send(request->socket, response, BUFFER_SIZE);
+    memset(response, '\0', BUFFER_SIZE);
+
+    spnrintf(response, BUFFER_SIZE,
+             "<!DOCTYPE html><html><head><title>Page "
+             "Title</title></head><body><ul>");
+    http_server_send(request->socket, response, BUFFER_SIZE);
+    memset(response, '\0', BUFFER_SIZE);
+    iterate_dir(fp, &(request->ctx));
+
+    snprintf(response, BUFFER_SIZE, "</ul></body></html>");
+    http_server_send(request->socket, response, BUFFER_SIZE);
+
+    return;
+}
+
 static int http_parser_callback_message_complete(http_parser *parser)
 {
     struct http_request *request = parser->data;
-    http_server_response(request, http_should_keep_alive(parser));
+    // http_server_response(request, http_should_keep_alive(parser));
+    list_directory_info(request);
     request->complete = 1;
     return 0;
 }
@@ -231,35 +292,6 @@ static void free_work(void)
     rcu_read_unlock();
 }
 
-static int printdir(struct dir_context *ctx,
-                    const char *name,
-                    int namlen,
-                    loff_t offset,
-                    u64 ino,
-                    unsigned int d_type)
-{
-    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
-        return 0;
-    }
-    pr_info("Filename : %s\n", name);
-    return 0;
-}
-
-static void list_directory_info(void)
-{
-    pr_info("Into : list_directory_info()\n");
-    char *path = "/";
-    struct dir_context ctx = {.actor = &printdir};
-    struct file *fp = filp_open(path, O_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
-
-    if (IS_ERR(fp)) {
-        printk("Open file error\n");
-    }
-    iterate_dir(fp, &ctx);
-
-    return;
-}
-
 int http_server_daemon(void *arg)
 {
     struct socket *socket;
@@ -271,8 +303,6 @@ int http_server_daemon(void *arg)
 
     timer_init();
     INIT_LIST_HEAD(&daemon.worker);
-
-    list_directory_info();
 
     while (!kthread_should_stop()) {
         int time = find_timer();
