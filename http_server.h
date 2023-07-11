@@ -11,6 +11,7 @@ struct http_server_param {
 struct khttp_server_service {
     bool is_stopped;
     struct list_head worker;
+    char *root;
 };
 
 struct khttp {
@@ -20,7 +21,8 @@ struct khttp {
     void *timer;
 };
 
-
 extern int http_server_daemon(void *);
+
+extern struct khttp_server_service daemon;
 
 #endif

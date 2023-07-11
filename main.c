@@ -1,6 +1,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/kthread.h>
+//#include <linux/kthread.h>
 #include <linux/sched/signal.h>
 #include <linux/tcp.h>
 #include <linux/version.h>
@@ -10,11 +10,14 @@
 
 #define DEFAULT_PORT 8081
 #define DEFAULT_BACKLOG 100
+#define DEFAULT_ROOT "/"
 
 static ushort port = DEFAULT_PORT;
 module_param(port, ushort, S_IRUGO);
 static ushort backlog = DEFAULT_BACKLOG;
 module_param(backlog, ushort, S_IRUGO);
+extern char *WWWROOT = DEFAULT_ROOT;
+module_param(WWWROOT, charp, 0000);
 
 static struct socket *listen_socket;
 static struct http_server_param param;
@@ -161,6 +164,7 @@ static int __init khttpd_init(void)
         return err;
     }
     param.listen_socket = listen_socket;
+    daemon.root = WWWROOT;
     khttp_wq = alloc_workqueue("khttp_wq", WQ_UNBOUND, 0);
     http_server = kthread_run(http_server_daemon, &param, KBUILD_MODNAME);
     if (IS_ERR(http_server)) {

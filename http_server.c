@@ -43,8 +43,9 @@ struct http_request {
     struct dir_context ctx;
 };
 
-struct khttp_server_service daemon = {.is_stopped = false};
 extern struct workqueue_struct *khttp_wq;
+
+struct khttp_server_service daemon = {.is_stopped = false};
 
 static int http_server_recv(struct socket *sock, char *buf, size_t size)
 {
@@ -155,7 +156,7 @@ static int printdir(struct dir_context *ctx,
         return 0;
     }
 
-    snprintf(buf, BUFFER_SIZE, "<li><a href=./%s/>%s</a></li>", name, name);
+    snprintf(buf, BUFFER_SIZE, "<li><a href=%s>%s</a></li>", name, name);
     http_server_send(request->socket, buf, BUFFER_SIZE);
     return 0;
 }
@@ -169,10 +170,11 @@ static void list_directory_info(struct http_request *request)
     if (request->method != HTTP_GET) {
         response = HTTP_RESPONSE_501;
         http_server_send(request->socket, response, strlen(response));
+        kfree(response);
     }
 
-    char *path = "/";
-    // struct dir_context ctx = {.actor = &printdir};
+    char *path = daemon.root;
+    pr_info("The current path is %s\n", path);
     request->ctx.actor = &printdir;
     struct file *fp = filp_open(path, O_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
     if (IS_ERR(fp)) {
@@ -194,6 +196,7 @@ static void list_directory_info(struct http_request *request)
 
     snprintf(response, BUFFER_SIZE, "</ul></body></html>");
     http_server_send(request->socket, response, BUFFER_SIZE);
+    kfree(response);
 
     return;
 }
@@ -269,8 +272,6 @@ static struct work_struct *create_work(struct socket *sk)
 
     // list_add(&work->list, &daemon.worker);
     list_add_rcu(&work->list, &daemon.worker);
-
-    // add_timer_t(work, TIMEOUT_DEFAULT, kernel_sock_shutdown);
 
     return &work->khttp_work;
 }
