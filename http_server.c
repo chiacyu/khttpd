@@ -174,9 +174,12 @@ static void list_directory_info(struct http_request *request)
     }
 
     char *path = daemon.root;
+    strcat(path, request->request_url);
     pr_info("The current path is %s\n", path);
     request->ctx.actor = &printdir;
+
     struct file *fp = filp_open(path, O_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
+
     if (IS_ERR(fp)) {
         pr_err("Open file error\n");
     }
@@ -187,17 +190,36 @@ static void list_directory_info(struct http_request *request)
     http_server_send(request->socket, response, BUFFER_SIZE);
     memset(response, '\0', BUFFER_SIZE);
 
-    snprintf(response, BUFFER_SIZE,
-             "<!DOCTYPE html><html><head><title>Page "
-             "Title</title></head><body><ul>");
-    http_server_send(request->socket, response, BUFFER_SIZE);
-    memset(response, '\0', BUFFER_SIZE);
-    iterate_dir(fp, &(request->ctx));
+    struct inode *inode = fp->f_inode;
+    if (S_ISDIR(inode->i_mode)) {
+        snprintf(response, BUFFER_SIZE,
+                 "<!DOCTYPE html><html><head><title>Directory"
+                 "</title></head><body><ul>");
+        http_server_send(request->socket, response, BUFFER_SIZE);
+        memset(response, '\0', BUFFER_SIZE);
 
-    snprintf(response, BUFFER_SIZE, "</ul></body></html>");
-    http_server_send(request->socket, response, BUFFER_SIZE);
-    kfree(response);
+        iterate_dir(fp, &(request->ctx));
 
+        snprintf(response, BUFFER_SIZE, "</ul></body></html>");
+        http_server_send(request->socket, response, BUFFER_SIZE);
+        kfree(response);
+    } else if (S_ISREG(inode->i_mode)) {
+        snprintf(response, BUFFER_SIZE,
+                 "<!DOCTYPE html><html><head><title>Regular"
+                 " File</title></head><body><p>");
+        http_server_send(request->socket, response, BUFFER_SIZE);
+        memset(response, '\0', BUFFER_SIZE);
+
+        // fp->f_op->read(fp, response, BUFFER_SIZE, &fp->f_op);
+        loff_t pos = 0;
+        vfs_read(fp, response, BUFFER_SIZE, pos);
+        http_server_send(request->socket, response, BUFFER_SIZE);
+        memset(response, '\0', BUFFER_SIZE);
+
+        snprintf(response, BUFFER_SIZE, "</p></body></html>");
+        http_server_send(request->socket, response, BUFFER_SIZE);
+        kfree(response);
+    }
     return;
 }
 
