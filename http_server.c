@@ -161,11 +161,12 @@ static int printdir(struct dir_context *ctx,
     return 0;
 }
 
-static void list_directory_info(struct http_request *request)
+static int list_directory_info(struct http_request *request)
 {
     pr_info("Into : list_directory_info()\n");
 
     char *response = kmalloc(BUFFER_SIZE, GFP_KERNEL);
+    char *path = daemon.root;
 
     if (request->method != HTTP_GET) {
         response = HTTP_RESPONSE_501;
@@ -173,15 +174,23 @@ static void list_directory_info(struct http_request *request)
         kfree(response);
     }
 
-    char *path = daemon.root;
-    strcat(path, request->request_url);
+    if (strcmp(request->request_url, "/") == 0) {
+        path = daemon.root;
+    } else {
+        strcat(path, request->request_url);
+    }
+
     pr_info("The current path is %s\n", path);
     request->ctx.actor = &printdir;
 
-    struct file *fp = filp_open(path, O_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
+    struct file *fp = filp_open(path, O_RDONLY, 0);
 
     if (IS_ERR(fp)) {
         pr_err("Open file error\n");
+        filp_close(fp, NULL);
+        response = HTTP_RESPONSE_501;
+        http_server_send(request->socket, response, strlen(response));
+        return -1;
     }
 
     snprintf(response, BUFFER_SIZE, "HTTP/1.1 200 OK \r\n%s%s%s",
@@ -210,17 +219,17 @@ static void list_directory_info(struct http_request *request)
         http_server_send(request->socket, response, BUFFER_SIZE);
         memset(response, '\0', BUFFER_SIZE);
 
-        // fp->f_op->read(fp, response, BUFFER_SIZE, &fp->f_op);
-        loff_t pos = 0;
-        vfs_read(fp, response, BUFFER_SIZE, pos);
-        http_server_send(request->socket, response, BUFFER_SIZE);
+        int ret = kernel_read(fp, response, fp->f_inode->i_size, 0);
+
+        http_server_send(request->socket, response, ret);
         memset(response, '\0', BUFFER_SIZE);
 
         snprintf(response, BUFFER_SIZE, "</p></body></html>");
         http_server_send(request->socket, response, BUFFER_SIZE);
         kfree(response);
     }
-    return;
+    filp_close(fp, NULL);
+    return 0;
 }
 
 static int http_parser_callback_message_complete(http_parser *parser)
